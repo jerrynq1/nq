@@ -86,6 +86,7 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
   <div class="tabs" id="tabs"></div>
   <span id="meta"></span>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <button class="btn" id="copyAll" style="display:none">Copy Levels</button>
     <label class="par">S<input id="pS" type="number" step="any" placeholder="spot" style="width:84px"></label>
     <label class="par">T(d)<input id="pT" type="number" step="any" placeholder="days" style="width:72px"></label>
     <label class="par">r(%)<input id="pR" type="number" step="any" value="4"></label>
@@ -204,7 +205,7 @@ function loadText(text,name){
       applyTheta();
       $('meta').textContent=name;
       draw();
-      $('oi').hidden=false;drawOI();$('th').hidden=false;drawTheta();
+      $('oi').hidden=false;drawOI();$('th').hidden=false;drawTheta();$('copyAll').style.display='';
     }catch(err){$('chart').innerHTML=`<div id="empty" class="err">Error: ${err.message}</div>`;}
 }
 
@@ -264,6 +265,47 @@ function drawOI(){
   g+=`<text class="wl" x="${wx}" y="${Y(wall.v)-6}" text-anchor="${end?'end':'middle'}">OI WALL</text>`;
   $('oiWrap').innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg>`;
 }
+function rankedByStrike(id){
+  const m=new Map();
+  rows.forEach(r=>m.set(r.strike,(m.get(r.strike)||0)+(r[id]||0)));
+  return [...m.entries()].sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+}
+function buildAllLevels(){
+  if(!rows)return '';
+  const S=+$('pS').value>0?+$('pS').value:inf.S;
+  const parts=[];
+  if(isFinite(S)&&S>0)parts.push(`SPOT=${S}`);
+  const mg=new Map();rows.forEach(r=>mg.set(r.strike,(mg.get(r.strike)||0)+r.gex));
+  const glist=[...mg.entries()];
+  if(glist.length){
+    const gres=glist.reduce((a,x)=>x[1]>a[1]?x:a);
+    const gsup=glist.reduce((a,x)=>x[1]<a[1]?x:a);
+    if(gres[1]>0)parts.push(`CW=${gres[0]}`);
+    if(gsup[1]<0)parts.push(`PW=${gsup[0]}`);
+  }
+  const flip=gammaFlip();
+  if(flip!==null)parts.push(`GF=${flip}`);
+  const moi=new Map();
+  rows.forEach(r=>{const o=moi.get(r.strike)||{c:0,p:0};if(r.right==='C')o.c+=r.oi;else o.p+=r.oi;moi.set(r.strike,o);});
+  let oiw={v:0,k:null};
+  moi.forEach((o,k)=>{if(o.c>oiw.v)oiw={v:o.c,k};if(o.p>oiw.v)oiw={v:o.p,k};});
+  if(oiw.k!==null)parts.push(`OI[${abbr(oiw.v)}]=${oiw.k}`);
+  // GEX: ranked list, 10 strikes, highest |GEX| first
+  rankedByStrike('gex').slice(0,10).forEach(([k,v],i)=>{if(v!==0)parts.push(`Γ${i+1}[${abbr(v)}]=${k}`);});
+  // Everything else: just its single Wall (the one strike with the largest |value|)
+  const walls=[['dex','Δ'],['vex','VEX'],['vegaex','VGEX'],['charmex','CHEX'],['thetaex','THEX']];
+  walls.forEach(([id,pfx])=>{
+    const top=rankedByStrike(id)[0];
+    if(top&&top[1]!==0)parts.push(`${pfx}[${abbr(top[1])}]=${top[0]}`);
+  });
+  return parts.join(',');
+}
+$('copyAll').onclick=async()=>{
+  const s=buildAllLevels();if(!s)return;
+  try{await navigator.clipboard.writeText(s);}
+  catch{const t=document.createElement('textarea');t.value=s;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();}
+  const old=$('copyAll').textContent;$('copyAll').textContent='Copied!';setTimeout(()=>$('copyAll').textContent=old,900);
+};
 function drawTheta(){
   if(!rows)return;
   const m=new Map();
