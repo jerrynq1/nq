@@ -55,8 +55,30 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
 .lg b{font-weight:700;color:#fff;margin-left:16px}
 #oiWrap .gl,#thWrap .gl{stroke:#1d2130}
 #oiWrap .ax,#thWrap .ax{stroke:#2f3547}
-@media(max-width:900px){#layout{flex-direction:column-reverse;padding-right:0}#levels{width:auto;align-self:stretch;margin:10px 16px 0;position:static}}
-@media(max-width:640px){body{font-size:11px}.row .k{width:40px}}
+#tip{position:fixed;left:10px;right:10px;bottom:10px;z-index:9;display:none;background:#1b1f2b;border:1px solid #3a4058;border-radius:8px;padding:10px 12px;color:#fff;font-size:12px;text-align:center;pointer-events:none}
+#chart{overflow-x:hidden}
+@media(max-width:900px){
+  #layout{flex-direction:column-reverse;align-items:stretch;padding-right:0}
+  #chart{flex:none;width:100%;padding:10px 12px 20px}
+  #levels{width:auto;align-self:stretch;margin:10px 12px 0;position:static}
+}
+@media(max-width:640px){
+  body{font-size:11px}
+  header{padding:10px 12px;gap:8px}
+  .tabs{width:100%;overflow-x:auto}
+  .tabs button{flex:1 0 auto;padding:9px 12px}
+  #meta{flex:1 1 100%;order:3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header>div:last-child{width:100%;justify-content:space-between}
+  .par input{width:48px}
+  .row{height:22px}
+  .row .k{width:40px;padding-right:6px}
+  .tag{font-size:9px;-webkit-text-stroke:2px #000}
+  #levels{padding:12px}
+  .card .v{font-size:17px}
+  #oi,#th{margin:12px;padding:12px}
+  .oih{flex-direction:column;align-items:flex-start}
+  .lg b{margin-left:8px}
+}
 </style>
 </head>
 <body>
@@ -298,6 +320,17 @@ function draw(){
 }
 
 {const sv=savedCSV();if(sv)loadText(sv.text,sv.name);}
+// Touch: tap a row / bar to see its details (no hover on phones)
+if(matchMedia('(hover:none)').matches){
+  const tip=document.createElement('div');tip.id='tip';document.body.appendChild(tip);let tt;
+  document.addEventListener('click',e=>{
+    const el=e.target.closest('.row,rect');let t=null;
+    if(el){t=el.getAttribute('title');if(!t){const c=el.querySelector('title');t=c&&c.textContent;}}
+    if(!t){tip.style.display='none';return;}
+    tip.textContent=t.replace(/ \| /g,'   ·   ');tip.style.display='block';
+    clearTimeout(tt);tt=setTimeout(()=>tip.style.display='none',4000);
+  });
+}
 $('up').onclick=()=>$('file').click();
 $('file').onchange=e=>{if(e.target.files[0])load(e.target.files[0]);};
 document.addEventListener('dragover',e=>e.preventDefault());
