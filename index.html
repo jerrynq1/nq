@@ -213,12 +213,19 @@ function render(){
 ['pS','pT','pI','pR','pQ'].forEach(id=>$(id).addEventListener('input',render));
 ['mS','mT','mI'].forEach(id=>$(id).addEventListener('change',()=>{syncInputs();render();}));
 
+// ===== Shared storage: upload once, kept until a new file is uploaded (same key in index.html and chart.html) =====
+const STORE_KEY='optflow_csv';
+function saveCSV(name,text){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,text,day:new Date().toDateString()}));}catch(e){}}
+function savedCSV(){try{const o=JSON.parse(localStorage.getItem(STORE_KEY));if(o&&o.text)return o;}catch(e){}return null;}
 function handleFile(file){
-  $('fname').textContent = file.name;
   const reader = new FileReader();
-  reader.onload = e=>{
+  reader.onload = e=>{ saveCSV(file.name,e.target.result); loadText(e.target.result,file.name); };
+  reader.readAsText(file);
+}
+function loadText(text,name){
+  $('fname').textContent = name;
     try{
-      const rows = parseCSV(e.target.result);
+      const rows = parseCSV(text);
       const need = ['strike','right','oi','iv_pct','delta','gamma','vega','vanna','charm','gex','dex','vex','vegaex','charmex'];
       const miss = need.filter(k=>!(k in rows[0]));
       if(miss.length) throw new Error('Missing columns: '+miss.join(', '));
@@ -230,9 +237,8 @@ function handleFile(file){
     }catch(err){
       statusEl.className='err'; statusEl.textContent = 'Error: '+err.message;
     }
-  };
-  reader.readAsText(file);
 }
+{ const sv=savedCSV(); if(sv) loadText(sv.text,sv.name); }
 
 $('up').onclick = ()=>$('file').click();
 $('file').onchange = e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); };
