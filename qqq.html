@@ -6,38 +6,32 @@
 <title>Options Chain Converter</title>
 <style>
   body{font-family:Consolas,Menlo,monospace;font-size:14px;margin:0;padding:24px;background:#fff;color:#000}
-  *{box-sizing:border-box}
-  .top{border-bottom:1px dotted #000;padding:0 0 16px 0;margin-bottom:16px}
-  .btn{border:1px solid #000;background:#fff;padding:8px 22px;cursor:pointer;font:inherit;border-radius:0;-webkit-appearance:none}
+  .top{border-bottom:1px dotted #000;padding:0 0 24px 110px;margin-bottom:24px}
+  .btn{border:1px solid #000;background:#fff;padding:6px 22px;cursor:pointer;font:inherit}
   .btn:hover{background:#eee}
-  #fname{margin-left:12px;color:#555;word-break:break-all}
-  .item{display:flex;align-items:center;gap:14px;margin-bottom:8px}
-  .item .lab{width:190px;flex:none}
-  .box{border:1px solid #000;padding:6px 8px;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#fff;cursor:pointer;min-height:34px}
-  .box.open{white-space:normal;word-break:break-all;text-overflow:clip}
-  .cp{width:78px;flex:none}
-  .hint{color:#777;font-size:12px;margin:0 0 10px}
+  #fname{margin-left:12px;color:#555}
+  .wrap{display:flex;gap:0}
+  .labels{width:340px;border-right:1px dotted #000;padding-right:12px}
+  .lrow{display:flex;height:34px;align-items:center}
+  .lrow.first{font-weight:normal}
+  .lrow .k{width:110px;text-align:right;padding-right:12px}
+  .lrow .k.title{width:auto}
+  .data{flex:1;padding-left:24px}
+  .drow{display:flex;height:34px;align-items:center;gap:20px}
+  .box{border:1px solid #000;padding:3px 6px;width:520px;max-width:60vw;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#fff}
+  .cp{width:70px}
   .params{margin-top:14px;padding-left:0;font-size:13px}
   .prow{display:flex;align-items:center;gap:10px;height:30px}
-  .prow b{width:80px;font-weight:normal;flex:none}
+  .prow b{width:80px;font-weight:normal}
   .params select{font:inherit;padding:2px}
-  .params input{width:100px;font:inherit;border-radius:0;border:1px solid #000;padding:2px 4px}
-  @media (max-width:640px){
-    body{padding:14px;font-size:15px}
-    .item{flex-wrap:wrap;gap:6px;margin-bottom:14px}
-    .item .lab{width:100%;font-weight:bold}
-    .box{flex:1 1 0}
-    .prow{flex-wrap:wrap;height:auto;margin-bottom:8px}
-    .params select,.params input{font-size:16px} /* tránh iOS tự zoom */
-    .params select{max-width:100%}
-  }
+  .params input{width:90px;font:inherit;border:1px solid #000;padding:2px 4px}
   #status{margin-top:16px;color:#080;min-height:1em}
   .err{color:#c00 !important}
 </style>
 </head>
 <body>
 <div class="top">
-  <input type="file" id="file" accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,application/vnd.ms-excel" hidden>
+  <input type="file" id="file" accept=".csv,text/csv" hidden>
   <button class="btn" id="up">Upload File</button><span id="fname"></span>
   <div class="params">
     <div class="prow"><b>S (spot)</b>
@@ -55,8 +49,10 @@
   </div>
 </div>
 
-<p class="hint">Chạm vào ô chuỗi để mở rộng xem đầy đủ; bấm Copy để sao chép.</p>
-<div id="list"></div>
+<div class="wrap">
+  <div class="labels" id="labels"></div>
+  <div class="data" id="data"></div>
+</div>
 <div id="status"></div>
 
 <script>
@@ -79,11 +75,18 @@ const ROWS = [
 ];
 
 const $ = id => document.getElementById(id);
-const statusEl = $('status');
-$('list').innerHTML = ROWS.map((r,i)=>
-  `<div class="item"><span class="lab">${r.label}</span><div class="box" id="box${i}"></div><button class="btn cp" data-i="${i}">Copy</button></div>`
+const labelsEl = $('labels'), dataEl = $('data'), statusEl = $('status');
+
+// Dựng giao diện
+labelsEl.innerHTML = '<div class="lrow first"><span class="k title">Data Exported:</span></div>' +
+  ROWS.map((r,i)=>`<div class="lrow">${i===0?'':''}<span class="k" style="width:auto;padding-left:110px">${r.label}</span></div>`).join('');
+// căn label theo hàng: hàng đầu "Data Exported:" nằm cùng hàng Open Interest
+labelsEl.innerHTML = ROWS.map((r,i)=>
+  `<div class="lrow"><span class="k title" style="width:110px;text-align:right;padding-right:12px">${i===0?'Data Exported:':''}</span><span>${r.label}</span></div>`
 ).join('');
-document.querySelectorAll('.box').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('open')));
+dataEl.innerHTML = ROWS.map((r,i)=>
+  `<div class="drow"><div class="box" id="box${i}"></div><button class="btn cp" data-i="${i}">Copy</button></div>`
+).join('');
 
 const outputs = ROWS.map(()=> '');
 
