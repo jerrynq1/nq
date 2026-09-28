@@ -14,6 +14,8 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
 .tabs button.on{background:#17323a;color:#7fe3f0}
 .btn{background:var(--panel);border:1px solid var(--line);color:var(--txt);font:inherit;padding:7px 14px;border-radius:6px;cursor:pointer}
 .btn:hover{border-color:#3a4058}
+.par{color:var(--dim);display:flex;align-items:center;gap:6px}
+.par input{width:56px;background:var(--panel);border:1px solid var(--line);color:var(--txt);font:inherit;padding:6px 8px;border-radius:6px}
 #meta{color:var(--dim)}
 #layout{display:flex;align-items:flex-start;gap:16px;padding-right:16px}
 #chart{flex:1;min-width:0}
@@ -41,18 +43,18 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
 .bar.n .tag{left:6px}
 #empty{padding:60px 16px;text-align:center;color:var(--dim)}
 .err{color:#ff6b6b}
-#oi{margin:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+#oi,#th{margin:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
 .oih{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 .oih h2{margin:0;font-size:15px;color:#fff}
 .lg{color:var(--dim);display:flex;align-items:center;gap:6px}
 .lg i{width:10px;height:10px;display:inline-block;border-radius:2px}
 .lg i+i,.lg i.pu{margin-left:10px}
-#oiWrap svg{display:block;width:100%}
-#oiWrap text{fill:var(--dim);font-size:10px;font-family:inherit}
-#oiWrap .wl{fill:#fff;stroke:#000;stroke-width:3px;paint-order:stroke fill;font-weight:700;font-size:11px}
+#oiWrap svg,#thWrap svg{display:block;width:100%}
+#oiWrap text,#thWrap text{fill:var(--dim);font-size:10px;font-family:inherit}
+#oiWrap .wl,#thWrap .wl{fill:#fff;stroke:#000;stroke-width:3px;paint-order:stroke fill;font-weight:700;font-size:11px}
 .lg b{font-weight:700;color:#fff;margin-left:16px}
-#oiWrap .gl{stroke:#1d2130}
-#oiWrap .ax{stroke:#2f3547}
+#oiWrap .gl,#thWrap .gl{stroke:#1d2130}
+#oiWrap .ax,#thWrap .ax{stroke:#2f3547}
 @media(max-width:900px){#layout{flex-direction:column-reverse;padding-right:0}#levels{width:auto;align-self:stretch;margin:10px 16px 0;position:static}}
 @media(max-width:640px){body{font-size:11px}.row .k{width:40px}}
 </style>
@@ -61,7 +63,9 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
 <header>
   <div class="tabs" id="tabs"></div>
   <span id="meta"></span>
-  <div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <label class="par">r(%)<input id="pR" type="number" step="any" value="4"></label>
+    <label class="par">q(%)<input id="pQ" type="number" step="any" value="0"></label>
     <input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>
     <button class="btn" id="up">Upload CSV</button>
   </div>
@@ -75,10 +79,16 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
   <div id="oiWrap"></div>
 </section>
 
+<section id="th" hidden>
+  <div class="oih"><h2>Theta by Strike</h2><span class="lg"><i style="background:var(--pos)"></i>Call<i class="pu" style="background:var(--neg)"></i>Put<b id="thWall"></b></span></div>
+  <div id="thWrap"></div>
+</section>
+
 <script>
 const METRICS=[
   {id:'gex',label:'GEX',wall:'Gamma'},{id:'dex',label:'DEX',wall:'Delta'},{id:'vex',label:'VEX',wall:'Vanna'},
-  {id:'vegaex',label:'VGEX',wall:'Vega'},{id:'charmex',label:'CHEX',wall:'Charm'}
+  {id:'vegaex',label:'VGEX',wall:'Vega'},{id:'charmex',label:'CHEX',wall:'Charm'},
+  {id:'thetaex',label:'THEX',wall:'Theta'}
 ];
 let cur='gex', rows=null;
 const $=id=>document.getElementById(id);
@@ -86,6 +96,38 @@ const $=id=>document.getElementById(id);
 $('tabs').innerHTML=METRICS.map(m=>`<button data-m="${m.id}" class="${m.id===cur?'on':''}">${m.label}</button>`).join('');
 $('tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;cur=b.dataset.m;
   document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));draw();};
+
+// ===== Theta (Black-Scholes, $/share/day) - same as index.html =====
+const pdf=x=>Math.exp(-x*x/2)/Math.sqrt(2*Math.PI);
+function cdf(x){
+  const t=1/(1+0.2316419*Math.abs(x)),d=pdf(x);
+  const p=d*t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+  return x>0?1-p:p;
+}
+const median=a=>{const b=a.filter(isFinite).sort((x,y)=>x-y);return b.length?b[Math.floor(b.length/2)]:NaN;};
+// Infer S and T (years) from file: dex = delta*oi*100*S ; vega/gamma = S^2*sigma*T
+function inferParams(d){
+  const S=median(d.filter(r=>r.oi>0&&r.delta!==0).map(r=>Math.abs(r.dex)/(Math.abs(r.delta)*r.oi*100)));
+  const T=median(d.filter(r=>r.gamma>0&&r.iv_pct>0).map(r=>r.vega/(r.gamma*S*S*(r.iv_pct/100))));
+  return {S,T};
+}
+function theta(r,S,T,rf,q){
+  const sg=r.iv_pct/100,K=r.strike;
+  if(!(T>0&&sg>0&&S>0))return 0;
+  const sq=Math.sqrt(T),d1=(Math.log(S/K)+(rf-q+sg*sg/2)*T)/(sg*sq),d2=d1-sg*sq;
+  const a=-S*Math.exp(-q*T)*pdf(d1)*sg/(2*sq);
+  const th=r.right==='C'
+    ? a-rf*K*Math.exp(-rf*T)*cdf(d2)+q*S*Math.exp(-q*T)*cdf(d1)
+    : a+rf*K*Math.exp(-rf*T)*cdf(-d2)-q*S*Math.exp(-q*T)*cdf(-d1);
+  return th/365;
+}
+let inf={S:NaN,T:NaN};
+function applyTheta(){
+  if(!rows)return;
+  const rf=(+$('pR').value||0)/100,q=(+$('pQ').value||0)/100;
+  rows.forEach(r=>{r.theta=theta(r,inf.S,inf.T,rf,q)||0;r.thetaex=r.theta*r.oi*100;});
+}
+['pR','pQ'].forEach(id=>$(id).addEventListener('input',()=>{applyTheta();draw();drawTheta();}));
 
 function parseCSV(t){
   const L=t.replace(/\r/g,'').split('\n').filter(l=>l.trim());
@@ -101,22 +143,28 @@ function abbr(x){
   return s+Math.round(a);
 }
 
+// ===== Shared storage: upload once, kept until a new file is uploaded (same key in index.html and chart.html) =====
+const STORE_KEY='optflow_csv';
+function saveCSV(name,text){try{localStorage.setItem(STORE_KEY,JSON.stringify({name,text,day:new Date().toDateString()}));}catch(e){}}
+function savedCSV(){try{const o=JSON.parse(localStorage.getItem(STORE_KEY));if(o&&o.text)return o;}catch(e){}return null;}
 function load(file){
   const r=new FileReader();
-  r.onload=e=>{
+  r.onload=e=>{saveCSV(file.name,e.target.result);loadText(e.target.result,file.name);};
+  r.readAsText(file);
+}
+function loadText(text,name){
     try{
-      const d=parseCSV(e.target.result);
-      const need=['strike','right','oi',...METRICS.map(m=>m.id)];
+      const d=parseCSV(text);
+      const need=['strike','right','oi','iv_pct','delta','gamma','vega',...METRICS.filter(m=>m.id!=='thetaex').map(m=>m.id)];
       const miss=need.filter(k=>!(k in d[0]));
       if(miss.length)throw new Error('Missing columns: '+miss.join(', '));
-      d.forEach(x=>{['strike','oi'].concat(METRICS.map(m=>m.id)).forEach(k=>x[k]=parseFloat(x[k])||0);x.right=x.right.toUpperCase();});
+      d.forEach(x=>{['strike','oi','iv_pct','delta','gamma','vega'].concat(METRICS.map(m=>m.id)).forEach(k=>x[k]=parseFloat(x[k])||0);x.right=x.right.toUpperCase();});
       rows=d;
-      $('meta').textContent=file.name;
+      inf=inferParams(d);applyTheta();
+      $('meta').textContent=name+(isFinite(inf.S)&&isFinite(inf.T)?` · S=${inf.S.toFixed(2)} · T=${(inf.T*365).toFixed(2)}d`:'');
       draw();
-      $('oi').hidden=false;drawOI();
+      $('oi').hidden=false;drawOI();$('th').hidden=false;drawTheta();
     }catch(err){$('chart').innerHTML=`<div id="empty" class="err">Error: ${err.message}</div>`;}
-  };
-  r.readAsText(file);
 }
 
 function gammaFlip(){
@@ -175,7 +223,41 @@ function drawOI(){
   g+=`<text class="wl" x="${wx}" y="${Y(wall.v)-6}" text-anchor="${end?'end':'middle'}">OI WALL</text>`;
   $('oiWrap').innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg>`;
 }
-let rz;window.addEventListener('resize',()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(drawOI);});
+function drawTheta(){
+  if(!rows)return;
+  const m=new Map();
+  rows.forEach(r=>{const o=m.get(r.strike)||{k:r.strike,c:0,p:0};if(r.right==='C')o.c+=r.theta;else o.p+=r.theta;m.set(r.strike,o);});
+  const list=[...m.values()].sort((a,b)=>a.k-b.k);
+  const f=v=>String(parseFloat(v.toFixed(3)));
+  const W=Math.max(320,$('thWrap').clientWidth),H=300,ml=52,mr=10,mt=24,mb=26,pw=W-ml-mr,ph=H-mt-mb;
+  let vmin=Math.min(0,...list.map(x=>Math.min(x.c,x.p))),vmax=Math.max(0,...list.map(x=>Math.max(x.c,x.p)));
+  if(vmax-vmin===0)vmax=1;
+  const raw=(vmax-vmin)/4,pow=Math.pow(10,Math.floor(Math.log10(raw)));
+  const step=[1,2,2.5,5,10].map(z=>z*pow).find(v=>v>=raw);
+  const lo_v=Math.floor(vmin/step+1e-9)*step,hi_v=Math.ceil(vmax/step-1e-9)*step;
+  const kmin=list[0].k,kmax=list[list.length-1].k;
+  let gap=Infinity;for(let i=1;i<list.length;i++)gap=Math.min(gap,list[i].k-list[i-1].k);
+  if(!isFinite(gap))gap=1;
+  const lo=kmin-gap/2,span=(kmax-kmin+gap)||1;
+  const X=k=>ml+(k-lo)/span*pw, Y=v=>mt+(hi_v-v)/(hi_v-lo_v)*ph, Y0=Y(0);
+  const bw=Math.max(1,Math.min(14,pw*gap/span*0.4));
+  let pk={v:0,a:0};
+  list.forEach(x=>{if(Math.abs(x.c)>pk.a)pk={v:x.c,a:Math.abs(x.c),k:x.k,s:'Call'};if(Math.abs(x.p)>pk.a)pk={v:x.p,a:Math.abs(x.p),k:x.k,s:'Put'};});
+  $('thWall').textContent=pk.a>0?`Max |Theta|: $${pk.k} (${pk.s} ${f(pk.v)})`:'';
+  let g='';
+  for(let v=lo_v;v<=hi_v+step/2;v+=step){const vv=Math.abs(v)<step/1e6?0:v;g+=`<line class="${vv===0?'ax':'gl'}" x1="${ml}" x2="${W-mr}" y1="${Y(vv)}" y2="${Y(vv)}"/><text x="${ml-6}" y="${Y(vv)+3}" text-anchor="end">${f(vv)}</text>`;}
+  const nl=Math.max(2,Math.floor(pw/56)),want=span/nl;
+  const ts=[1,2,5,10,20,50,100].find(v=>v>=want)||100;
+  for(let k=Math.ceil(kmin/ts)*ts;k<=kmax;k+=ts)g+=`<text x="${X(k)}" y="${H-8}" text-anchor="middle">$${k}</text>`;
+  const bar=(x0,v,c,hl)=>`<rect x="${x0}" y="${Math.min(Y(v),Y0)}" width="${bw}" height="${Math.abs(Y(v)-Y0)}" fill="${c}"${hl?' stroke="#fff"':''}/>`;
+  list.forEach(x=>{
+    const cx=X(x.k);
+    g+=bar(cx-bw,x.c,'var(--pos)',pk.k===x.k&&pk.s==='Call')+bar(cx,x.p,'var(--neg)',pk.k===x.k&&pk.s==='Put')+
+       `<rect x="${cx-bw-1}" y="${mt}" width="${bw*2+2}" height="${ph}" fill="transparent"><title>$${x.k} | Call Theta ${f(x.c)} | Put Theta ${f(x.p)}</title></rect>`;
+  });
+  $('thWrap').innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg>`;
+}
+let rz;window.addEventListener('resize',()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(()=>{drawOI();drawTheta();});});
 function draw(){
   if(!rows)return;
   // merge Call + Put per strike
@@ -215,6 +297,7 @@ function draw(){
   });
 }
 
+{const sv=savedCSV();if(sv)loadText(sv.text,sv.name);}
 $('up').onclick=()=>$('file').click();
 $('file').onchange=e=>{if(e.target.files[0])load(e.target.files[0]);};
 document.addEventListener('dragover',e=>e.preventDefault());
