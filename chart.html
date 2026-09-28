@@ -87,6 +87,7 @@ header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:s
   <span id="meta"></span>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <label class="par">S<input id="pS" type="number" step="any" placeholder="spot" style="width:84px"></label>
+    <label class="par">T(d)<input id="pT" type="number" step="any" placeholder="days" style="width:72px"></label>
     <label class="par">r(%)<input id="pR" type="number" step="any" value="4"></label>
     <label class="par">q(%)<input id="pQ" type="number" step="any" value="0"></label>
     <input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>
@@ -147,8 +148,8 @@ function theta(r,S,T,rf,q){
 let inf={S:NaN,T:NaN};
 function applyTheta(){
   if(!rows)return;
-  const rf=(+$('pR').value||0)/100,q=(+$('pQ').value||0)/100,S=+$('pS').value>0?+$('pS').value:inf.S;
-  rows.forEach(r=>{r.theta=theta(r,S,inf.T,rf,q)||0;r.thetaex=r.theta*r.oi*100;});
+  const rf=(+$('pR').value||0)/100,q=(+$('pQ').value||0)/100,S=+$('pS').value>0?+$('pS').value:inf.S,T=+$('pT').value>0?+$('pT').value/365:inf.T;
+  rows.forEach(r=>{r.theta=theta(r,S,T,rf,q)||0;r.thetaex=r.theta*r.oi*100;});
 }
 // S (spot): auto-filled from the file, editable; manual value is remembered until a new file is uploaded
 const S_KEY='optflow_S';
@@ -157,7 +158,14 @@ $('pS').addEventListener('input',()=>{
   try{const v=+$('pS').value;if(v>0)localStorage.setItem(S_KEY,String(v));else localStorage.removeItem(S_KEY);}catch(e){}
 });
 $('pS').addEventListener('change',()=>{if(!(+$('pS').value>0))$('pS').value=inferredS();applyTheta();draw();drawTheta();});
-['pS','pR','pQ'].forEach(id=>$(id).addEventListener('input',()=>{applyTheta();draw();drawTheta();}));
+// T (days to expiry): same behaviour as S
+const T_KEY='optflow_T';
+const inferredT=()=>isFinite(inf.T)?String(parseFloat((inf.T*365).toFixed(4))):'';
+$('pT').addEventListener('input',()=>{
+  try{const v=+$('pT').value;if(v>0)localStorage.setItem(T_KEY,String(v));else localStorage.removeItem(T_KEY);}catch(e){}
+});
+$('pT').addEventListener('change',()=>{if(!(+$('pT').value>0))$('pT').value=inferredT();applyTheta();draw();drawTheta();});
+['pS','pT','pR','pQ'].forEach(id=>$(id).addEventListener('input',()=>{applyTheta();draw();drawTheta();}));
 
 function parseCSV(t){
   const L=t.replace(/\r/g,'').split('\n').filter(l=>l.trim());
@@ -179,7 +187,7 @@ function saveCSV(name,text){try{localStorage.setItem(STORE_KEY,JSON.stringify({n
 function savedCSV(){try{const o=JSON.parse(localStorage.getItem(STORE_KEY));if(o&&o.text)return o;}catch(e){}return null;}
 function load(file){
   const r=new FileReader();
-  r.onload=e=>{try{localStorage.removeItem('optflow_S');}catch(_){}saveCSV(file.name,e.target.result);loadText(e.target.result,file.name);};
+  r.onload=e=>{try{localStorage.removeItem('optflow_S');localStorage.removeItem('optflow_T');}catch(_){}saveCSV(file.name,e.target.result);loadText(e.target.result,file.name);};
   r.readAsText(file);
 }
 function loadText(text,name){
@@ -192,8 +200,9 @@ function loadText(text,name){
       rows=d;
       inf=inferParams(d);
       {let ms=0;try{ms=+localStorage.getItem(S_KEY)||0;}catch(_){}$('pS').value=ms>0?ms:inferredS();}
+      {let mt=0;try{mt=+localStorage.getItem(T_KEY)||0;}catch(_){}$('pT').value=mt>0?mt:inferredT();}
       applyTheta();
-      $('meta').textContent=name+(isFinite(inf.T)?` · T=${(inf.T*365).toFixed(2)}d`:'');
+      $('meta').textContent=name;
       draw();
       $('oi').hidden=false;drawOI();$('th').hidden=false;drawTheta();
     }catch(err){$('chart').innerHTML=`<div id="empty" class="err">Error: ${err.message}</div>`;}
