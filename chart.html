@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exposure Chart</title>
+<style>
+:root{--bg:#0a0b0f;--panel:#12141b;--line:#232735;--txt:#c9cfdd;--dim:#6b7285;--pos:#5fd35a;--neg:#8a5cf6;--res:#d9b23a;--sup:#5b7cff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:12px Consolas,Menlo,monospace}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.tabs button{background:none;border:0;color:var(--dim);font:inherit;padding:7px 14px;cursor:pointer}
+.tabs button.on{background:#17323a;color:#7fe3f0}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--txt);font:inherit;padding:7px 14px;border-radius:6px;cursor:pointer}
+.btn:hover{border-color:#3a4058}
+#meta{color:var(--dim)}
+#layout{display:flex;align-items:flex-start;gap:16px;padding-right:16px}
+#chart{flex:1;min-width:0}
+#levels{width:290px;flex:none;margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;position:sticky;top:10px}
+#levels h2{margin:0 0 12px;font-size:15px;color:#fff}
+#cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{border:1px solid var(--c);border-radius:8px;padding:10px 12px;background:rgba(255,255,255,.02)}
+.card .l{color:var(--dim);font-size:10px;letter-spacing:.06em}
+.card .v{color:var(--c);font-size:20px;font-weight:700;margin-top:6px}
+.card .s{color:var(--dim);font-size:10px;margin-top:4px}
+.card.wide{grid-column:1/-1}
+.c-g{--c:#5fd35a}.c-p{--c:#8a5cf6}.c-o{--c:#e0954a}.c-w{--c:#c9cfdd}
+#chart{padding:10px 16px 24px;position:relative}
+.row{display:flex;align-items:center;height:20px}
+.row .k{width:52px;flex:none;color:var(--dim);text-align:right;padding-right:10px}
+.row .plot{position:relative;flex:1;height:100%}
+.row .axis{position:absolute;top:0;bottom:0;border-left:1px dashed #2f3547}
+.bar{position:absolute;top:4px;bottom:4px}
+.bar.p{background:linear-gradient(90deg,rgba(95,211,90,.05),var(--pos))}
+.bar.n{background:linear-gradient(270deg,rgba(138,92,246,.05),var(--neg))}
+.row.res .k{color:var(--res)} .row.sup .k{color:var(--sup)}
+.row.res .bar{outline:1px solid var(--res)} .row.sup .bar{outline:1px solid var(--sup)}
+.tag{position:absolute;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;white-space:nowrap;line-height:1;color:#fff;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 0 2px #000,0 0 2px #000}
+.bar.p .tag{right:6px}
+.bar.n .tag{left:6px}
+#empty{padding:60px 16px;text-align:center;color:var(--dim)}
+.err{color:#ff6b6b}
+#oi{margin:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.oih{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.oih h2{margin:0;font-size:15px;color:#fff}
+.lg{color:var(--dim);display:flex;align-items:center;gap:6px}
+.lg i{width:10px;height:10px;display:inline-block;border-radius:2px}
+.lg i+i,.lg i.pu{margin-left:10px}
+#oiWrap svg{display:block;width:100%}
+#oiWrap text{fill:var(--dim);font-size:10px;font-family:inherit}
+#oiWrap .wl{fill:#fff;stroke:#000;stroke-width:3px;paint-order:stroke fill;font-weight:700;font-size:11px}
+.lg b{font-weight:700;color:#fff;margin-left:16px}
+#oiWrap .gl{stroke:#1d2130}
+#oiWrap .ax{stroke:#2f3547}
+@media(max-width:900px){#layout{flex-direction:column-reverse;padding-right:0}#levels{width:auto;align-self:stretch;margin:10px 16px 0;position:static}}
+@media(max-width:640px){body{font-size:11px}.row .k{width:40px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="tabs" id="tabs"></div>
+  <span id="meta"></span>
+  <div>
+    <input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>
+    <button class="btn" id="up">Upload CSV</button>
+  </div>
+</header>
+<div id="layout">
+<div id="chart"><div id="empty">Upload an options chain CSV (same format as the Options Chain Converter page) or drag and drop it here.</div></div>
+<aside id="levels" hidden><h2>Key Levels</h2><div id="cards"></div></aside>
+</div>
+<section id="oi" hidden>
+  <div class="oih"><h2>Open Interest by Strike</h2><span class="lg"><i style="background:var(--pos)"></i>Call<i class="pu" style="background:var(--neg)"></i>Put<b id="oiWall"></b></span></div>
+  <div id="oiWrap"></div>
+</section>
+
+<script>
+const METRICS=[
+  {id:'gex',label:'GEX',wall:'Gamma'},{id:'dex',label:'DEX',wall:'Delta'},{id:'vex',label:'VEX',wall:'Vanna'},
+  {id:'vegaex',label:'VGEX',wall:'Vega'},{id:'charmex',label:'CHEX',wall:'Charm'}
+];
+let cur='gex', rows=null;
+const $=id=>document.getElementById(id);
+
+$('tabs').innerHTML=METRICS.map(m=>`<button data-m="${m.id}" class="${m.id===cur?'on':''}">${m.label}</button>`).join('');
+$('tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;cur=b.dataset.m;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));draw();};
+
+function parseCSV(t){
+  const L=t.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+  const h=L[0].split(',').map(s=>s.trim());
+  return L.slice(1).map(l=>{const v=l.split(',');const o={};h.forEach((k,i)=>o[k]=(v[i]||'').trim());return o;});
+}
+function abbr(x){
+  const n=Number(x);if(!isFinite(n))return'0';
+  const a=Math.abs(n),s=n<0?'-':'',t=v=>String(parseFloat(v.toFixed(1)));
+  if(a>=999.95e6)return s+t(a/1e9)+'B';
+  if(a>=999.95e3)return s+t(a/1e6)+'M';
+  if(a>=1e3)return s+t(a/1e3)+'K';
+  return s+Math.round(a);
+}
+
+function load(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const d=parseCSV(e.target.result);
+      const need=['strike','right','oi',...METRICS.map(m=>m.id)];
+      const miss=need.filter(k=>!(k in d[0]));
+      if(miss.length)throw new Error('Missing columns: '+miss.join(', '));
+      d.forEach(x=>{['strike','oi'].concat(METRICS.map(m=>m.id)).forEach(k=>x[k]=parseFloat(x[k])||0);x.right=x.right.toUpperCase();});
+      rows=d;
+      $('meta').textContent=file.name;
+      draw();
+      $('oi').hidden=false;drawOI();
+    }catch(err){$('chart').innerHTML=`<div id="empty" class="err">Error: ${err.message}</div>`;}
+  };
+  r.readAsText(file);
+}
+
+function gammaFlip(){
+  const m=new Map();rows.forEach(r=>m.set(r.strike,(m.get(r.strike)||0)+r.gex));
+  let cum=0,prev=null;
+  for(const [k,v] of [...m.entries()].sort((a,b)=>a[0]-b[0])){
+    const c=cum+v;
+    if(prev&&prev.c!==0&&c!==0&&Math.sign(prev.c)!==Math.sign(c))
+      return parseFloat((prev.k+(k-prev.k)*Math.abs(prev.c)/(Math.abs(prev.c)+Math.abs(c))).toFixed(2));
+    cum=c;prev={k,c};
+  }
+  return null;
+}
+const card=(label,val,sub,cls)=>`<div class="card ${cls}"><div class="l">${label}</div><div class="v">${val}</div>${sub?`<div class="s">${sub}</div>`:''}</div>`;
+function renderCards({res,sup,big,net,wallName}){
+  const lv=(o,ok)=>ok?'$'+o.k:'–', sb=(o,ok)=>ok?abbr(o.v):'No level';
+  const flip=gammaFlip(), lab=METRICS.find(z=>z.id===cur).label;
+  $('cards').innerHTML=
+    card('CALL WALL',lv(res,res.v>0),sb(res,res.v>0),'c-g')+
+    card('PUT WALL',lv(sup,sup.v<0),sb(sup,sup.v<0),'c-p')+
+    card('GAMMA FLIP',flip===null?'–':'$'+flip,flip===null?'No sign change':'Cumulative GEX = 0','c-o')+
+    card(wallName.toUpperCase(),lv(big,big.v!==0),sb(big,big.v!==0),'c-o')+
+    card('NET '+lab,abbr(net),'All strikes combined',net>=0?'c-g wide':'c-p wide');
+  $('levels').hidden=false;
+}
+function drawOI(){
+  if(!rows)return;
+  const m=new Map();
+  rows.forEach(r=>{const o=m.get(r.strike)||{k:r.strike,c:0,p:0};if(r.right==='C')o.c+=r.oi;else o.p+=r.oi;m.set(r.strike,o);});
+  const list=[...m.values()].sort((a,b)=>a.k-b.k);
+  const W=Math.max(320,$('oiWrap').clientWidth),H=300,ml=44,mr=10,mt=24,mb=26,pw=W-ml-mr,ph=H-mt-mb;
+  const mx=Math.max(1,...list.map(x=>Math.max(x.c,x.p)));
+  const raw=mx/4,pow=Math.pow(10,Math.floor(Math.log10(raw)));
+  const step=[1,2,2.5,5,10].map(f=>f*pow).find(v=>v>=raw),top=Math.ceil(mx/step)*step;
+  const kmin=list[0].k,kmax=list[list.length-1].k;
+  let gap=Infinity;for(let i=1;i<list.length;i++)gap=Math.min(gap,list[i].k-list[i-1].k);
+  if(!isFinite(gap))gap=1;
+  const lo=kmin-gap/2,span=(kmax-kmin+gap)||1;
+  const X=k=>ml+(k-lo)/span*pw, Y=v=>mt+ph-v/top*ph;
+  const bw=Math.max(1,Math.min(14,pw*gap/span*0.4));
+  let wall={v:0};
+  list.forEach(x=>{if(x.c>wall.v)wall={v:x.c,k:x.k,s:'Call'};if(x.p>wall.v)wall={v:x.p,k:x.k,s:'Put'};});
+  $('oiWall').textContent=`OI Wall: $${wall.k} (${wall.s} ${abbr(wall.v)})`;
+  let g='';
+  for(let v=0;v<=top+1e-9;v+=step)g+=`<line class="${v===0?'ax':'gl'}" x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${ml-6}" y="${Y(v)+3}" text-anchor="end">${abbr(v)}</text>`;
+  const nl=Math.max(2,Math.floor(pw/56)),want=span/nl;
+  const ts=[1,2,5,10,20,50,100].find(v=>v>=want)||100;
+  for(let k=Math.ceil(kmin/ts)*ts;k<=kmax;k+=ts)g+=`<text x="${X(k)}" y="${H-8}" text-anchor="middle">$${k}</text>`;
+  list.forEach(x=>{
+    const cx=X(x.k);
+    g+=`<rect x="${cx-bw}" y="${Y(x.c)}" width="${bw}" height="${ph+mt-Y(x.c)}" fill="var(--pos)"${wall.k===x.k&&wall.s==='Call'?' stroke="#fff"':''}/>`+
+       `<rect x="${cx}" y="${Y(x.p)}" width="${bw}" height="${ph+mt-Y(x.p)}" fill="var(--neg)"${wall.k===x.k&&wall.s==='Put'?' stroke="#fff"':''}/>`+
+       `<rect x="${cx-bw-1}" y="${mt}" width="${bw*2+2}" height="${ph}" fill="transparent"><title>$${x.k} | Call OI ${x.c.toLocaleString()} | Put OI ${x.p.toLocaleString()}</title></rect>`;
+  });
+  const wx=X(wall.k)+(wall.s==='Call'?-bw/2:bw/2), end=wx>W-110;
+  g+=`<text class="wl" x="${wx}" y="${Y(wall.v)-6}" text-anchor="${end?'end':'middle'}">OI WALL</text>`;
+  $('oiWrap').innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}">${g}</svg>`;
+}
+let rz;window.addEventListener('resize',()=>{cancelAnimationFrame(rz);rz=requestAnimationFrame(drawOI);});
+function draw(){
+  if(!rows)return;
+  // merge Call + Put per strike
+  const m=new Map();
+  rows.forEach(r=>{
+    const o=m.get(r.strike)||{k:r.strike,v:0,c:0,p:0};
+    o.v+=r[cur]; if(r.right==='C')o.c+=r[cur]; else o.p+=r[cur];
+    m.set(r.strike,o);
+  });
+  const list=[...m.values()].sort((a,b)=>b.k-a.k);
+  const maxPos=Math.max(0,...list.map(x=>x.v)), maxNeg=Math.max(0,...list.map(x=>-x.v));
+  const tot=(maxPos+maxNeg)||1, zero=maxNeg/tot*100;
+  const res=list.reduce((a,x)=>x.v>a.v?x:a,{v:0}), sup=list.reduce((a,x)=>x.v<a.v?x:a,{v:0});
+  const net=list.reduce((s,x)=>s+x.v,0);
+  const big=list.reduce((a,x)=>Math.abs(x.v)>Math.abs(a.v)?x:a,{v:0});
+  const wallName=METRICS.find(z=>z.id===cur).wall+' Wall';
+
+  renderCards({res,sup,big,net,wallName});
+
+  let html='';
+  list.forEach(x=>{
+    const w=Math.abs(x.v)/tot*100, pos=x.v>=0;
+    const cls=(x===res&&res.v>0?' res':'')+(x===sup&&sup.v<0?' sup':'');
+    const tag=cls?`<span class="tag">${x===big?wallName.toUpperCase()+' · ':''}${x===res?'CALL WALL':'PUT WALL'}</span>`:'';
+    const bar=`<div class="bar ${pos?'p':'n'}" style="${pos?`left:${zero}%`:`left:${zero-w}%`};width:${w}%">${tag}</div>`;
+    html+=`<div class="row${cls}" title="${x.k} | Call ${abbr(x.c)} | Put ${abbr(x.p)} | Net ${abbr(x.v)}"><span class="k">${x.k}</span><div class="plot"><div class="axis" style="left:${zero}%"></div>${bar}</div></div>`;
+  });
+  $('chart').innerHTML=html;
+  // If the label doesn't fit inside its bar, move it to the empty side of the axis
+  document.querySelectorAll('.bar .tag').forEach(t=>{
+    const bar=t.parentElement, plot=bar.parentElement, need=t.offsetWidth+12;
+    if(bar.offsetWidth>=need)return;
+    const isPos=bar.classList.contains('p'), space=isPos?bar.offsetLeft:plot.offsetWidth-bar.offsetLeft-bar.offsetWidth;
+    if(space<need)return;
+    if(isPos){t.style.right='auto';t.style.left=-(t.offsetWidth+6)+'px';}
+    else{t.style.left='auto';t.style.right=-(t.offsetWidth+6)+'px';}
+  });
+}
+
+$('up').onclick=()=>$('file').click();
+$('file').onchange=e=>{if(e.target.files[0])load(e.target.files[0]);};
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer.files[0])load(e.dataTransfer.files[0]);});
+</script>
+</body>
+</html>
